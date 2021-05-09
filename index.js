@@ -71,34 +71,19 @@ class PhysicalObject {
     #gravity = 9.8; //Earth's Gravity
     #frictions_coefficient = 0.2; //Friction's coefficient
     #initialVelocity = 0;
-    #raf;
 
-    move(impulse, context) {
+    move(impulse) {
         let normalForce = this.weight * this.#gravity;
-        let finalVelocity;
 
         switch(impulse.getDirection()) {
             case Direction.Horizontal:
                 let friction = normalForce * this.#frictions_coefficient;
                 let resultantForce = impulse.getMagnitude() - friction;
-                if(resultantForce > 0) {
+                this.finalVelocityX = ( (resultantForce * impulse.time) / this.weight ) + this.#initialVelocity;
 
-                    finalVelocity = ( (impulse.getMagnitude() * impulse.time) / this.weight ) + this.#initialVelocity;
-
-                    let object = context.getWidthAndHeight();
-                    switch(impulse.getSense()) {
-                        case Sense.Left:
-                            if( !(this.currentPosition.X - finalVelocity < 5) ) {
-                                this.currentPosition.X -= finalVelocity;
-                                this.#raf = window.requestAnimationFrame(()=> { context.drawRect(grandstand.context, this.currentPosition) });
-                            }
-                            break;
-                        default:
-                            if( !(this.currentPosition.X + finalVelocity > grandstand.width - object.width) ) {
-                                this.currentPosition.X += finalVelocity;
-                                this.#raf = window.requestAnimationFrame(()=> { context.drawRect(grandstand.context, this.currentPosition) });
-                            }
-                            break;
+                if(this.finalVelocityX > 0) {
+                    if(impulse.getSense() == Sense.Left) {
+                        this.finalVelocityX *= -1;
                     }
                 } else {
                     throw Error("The force to move the object should be greater than the friction force.");
@@ -117,28 +102,63 @@ class PhysicalObject {
 
     }
 
-    clearAnimationFrame() {
-        if(this.#raf) {
-            console.log('canceling animation frame: ', this.#raf);
-            window.cancelAnimationFrame(this.#raf);
-            this.#raf = null;
-        }
-    }
-
     constructor(position, weight) {
         this.currentPosition = Object.assign(position);
         this.weight = weight;
+        this.finalVelocityX = 0;
+    }
+}
+
+function RecAnimation(sync) {
+    let objectToAnimate;
+    let raf;
+
+    function drawRect() {
+
+        let x = objectToAnimate.physicalObject.currentPosition.X;
+        let y = objectToAnimate.physicalObject.currentPosition.Y;
+        let finalVelocityX = objectToAnimate.physicalObject.finalVelocityX;
+
+        grandstand.context.clearRect(0, 0, 600, 700);
+        grandstand.context.beginPath();
+        grandstand.context.rect(x, y, objectToAnimate.width, objectToAnimate.height);
+        grandstand.context.fillStyle = objectToAnimate.color;
+        grandstand.context.fill();
+        grandstand.context.closePath();
+
+        if(x + finalVelocityX < 0 || x + finalVelocityX > grandstand.width - objectToAnimate.width) {
+            objectToAnimate.physicalObject.currentPosition.X -= finalVelocityX * 1.45;
+        } else {
+            objectToAnimate.physicalObject.currentPosition.X += finalVelocityX;
+        }
+
+        raf = window.requestAnimationFrame(drawRect);
+    }
+
+    function refresh(newObj) {
+        objectToAnimate = newObj;
+    }
+
+    function clearAnimationFrame() {
+        if(raf) {
+            console.log(objectToAnimate.physicalObject);
+            window.cancelAnimationFrame(raf);
+            objectToAnimate.physicalObject.finalVelocityX = 0;
+            raf = null;
+        }
+    }
+
+    return {
+        drawRect,
+        clearAnimationFrame,
+        refresh
     }
 }
 
 class Rectangle {
-    #width;
-    #height;
-    #color;
-
     validify() {
-        if(this.#width !== 0 && this.#height !== 0) {
-            if(this.#width === this.#height) {
+        if(this.width !== 0 && this.height !== 0) {
+            if(this.width === this.height) {
                 throw Error("Height can't be equal to width!");
             }
         } else {
@@ -148,24 +168,15 @@ class Rectangle {
 
     getWidthAndHeight() {
         return {
-            height: this.#height,
-            width: this.#width
+            height: this.height,
+            width: this.width
         }
     }
 
-    drawRect(context, position) {
-        context.clearRect(0, 0, 600, 700);
-        context.beginPath();
-        context.rect(position.X, position.Y, this.#width, this.#height);
-        context.fillStyle = this.#color;
-        context.fill();
-        context.closePath();
-    }
-
     constructor(rectangle) {
-        this.#height = rectangle.height;
-        this.#width = rectangle.width;
-        this.#color = rectangle.color;
+        this.height = rectangle.height;
+        this.width = rectangle.width;
+        this.color = rectangle.color;
         this.validify();
     }
 }
@@ -174,27 +185,40 @@ class Racket extends Rectangle {
     #physicalObject;
 
     #move(impulse) {
-        this.#physicalObject.move(impulse, this);
+        this.#physicalObject.move(impulse);
+        this.animation.drawRect();
     }
 
     moveLeft() {
-        let leftImpulse = new Impulse(Direction.Horizontal, Sense.Left, 50, 5);
+        let leftImpulse = new Impulse(Direction.Horizontal, Sense.Left, 55, 5);
         this.#move(leftImpulse);
     }
 
     moveRight() {
-        let rightImpulse = new Impulse(Direction.Horizontal, Sense.Right, 50, 5);
+        let rightImpulse = new Impulse(Direction.Horizontal, Sense.Right, 55, 5);
         this.#move(rightImpulse);
     }
 
     clearAnimation() {
-        this.#physicalObject.clearAnimationFrame();
+        this.animation.clearAnimationFrame();
+    }
+
+    syncAnimation() {
+        let obj = {
+            width: this.width,
+            height: this.height,
+            color: this.color,
+            physicalObject: this.#physicalObject
+        }
+        this.animation.refresh(obj);
     }
 
     constructor(racket) {
         super(racket.rectangle);
         this.#physicalObject = new PhysicalObject(racket.position, racket.weight);
-        this.drawRect(grandstand.context, this.#physicalObject.currentPosition)
+        this.animation = RecAnimation();
+        this.syncAnimation();
+        this.animation.drawRect();
     }
 }
 
@@ -241,16 +265,10 @@ window.onload = () => {
     grandstand.onkeydown = (event) => {
         switch(event.code) {
             case AllowedKeys.ARROW_LEFT:
-                setTimeout(() => {
-                    racket.moveLeft();
-                }, 10);
-                racket.clearAnimation();
+                racket.moveLeft();
                 break;
             case AllowedKeys.ARROW_RIGHT:
-                setTimeout(() => {
-                    racket.moveRight();
-                }, 10);
-                racket.clearAnimation();
+                racket.moveRight();
                 break;
             case AllowedKeys.ARROW_UP:
                 console.log(Sense.Up);
@@ -260,6 +278,12 @@ window.onload = () => {
                 break;
             default:
                 return;
+        }
+    }
+
+    grandstand.onkeyup = (event) => {
+        if(event.code == AllowedKeys.ARROW_LEFT || event.code == AllowedKeys.ARROW_RIGHT) {
+            racket.clearAnimation();
         }
     }
 };
