@@ -109,47 +109,44 @@ class PhysicalObject {
     }
 }
 
-function RecAnimation(sync) {
-    let objectToAnimate;
+function MyAnimation(update) {
+    let startTime = null;
+    let animationLength = 500;
     let raf;
 
-    function drawRect() {
+    function animate(timestamp) {
+        let progress = 0;
 
-        let x = objectToAnimate.physicalObject.currentPosition.X;
-        let y = objectToAnimate.physicalObject.currentPosition.Y;
-        let finalVelocityX = objectToAnimate.physicalObject.finalVelocityX;
-
-        grandstand.context.clearRect(0, 0, 600, 700);
-        grandstand.context.beginPath();
-        grandstand.context.rect(x, y, objectToAnimate.width, objectToAnimate.height);
-        grandstand.context.fillStyle = objectToAnimate.color;
-        grandstand.context.fill();
-        grandstand.context.closePath();
-
-        if(x + finalVelocityX < 0 || x + finalVelocityX > grandstand.width - objectToAnimate.width) {
-            objectToAnimate.physicalObject.currentPosition.X -= finalVelocityX * 1.45;
+        if(startTime === null) {
+            startTime = timestamp;
         } else {
-            objectToAnimate.physicalObject.currentPosition.X += finalVelocityX;
+            progress = timestamp - startTime;
         }
 
-        raf = window.requestAnimationFrame(drawRect);
+        if(progress < animationLength) {
+            update();
+            raf = window.requestAnimationFrame(animate);
+        }
     }
 
     function refresh(newObj) {
         objectToAnimate = newObj;
     }
 
+    function Init(){
+        raf = window.requestAnimationFrame(animate);
+    }
+
     function clearAnimationFrame() {
         if(raf) {
-            console.log(objectToAnimate.physicalObject);
             window.cancelAnimationFrame(raf);
-            objectToAnimate.physicalObject.finalVelocityX = 0;
             raf = null;
+            startTime = null;
         }
     }
 
     return {
-        drawRect,
+        Init,
         clearAnimationFrame,
         refresh
     }
@@ -166,11 +163,13 @@ class Rectangle {
         }
     }
 
-    getWidthAndHeight() {
-        return {
-            height: this.height,
-            width: this.width
-        }
+    draw(x, y) {
+        grandstand.context.clearRect(0, 0, grandstand.width, grandstand.height);
+        grandstand.context.beginPath();
+        grandstand.context.rect(x, y, this.width, this.height);
+        grandstand.context.fillStyle = this.color;
+        grandstand.context.fill();
+        grandstand.context.closePath();
     }
 
     constructor(rectangle) {
@@ -186,43 +185,64 @@ class Racket extends Rectangle {
 
     #move(impulse) {
         this.#physicalObject.move(impulse);
-        this.animation.drawRect();
+        this.animation.Init();
     }
 
     moveLeft() {
-        let leftImpulse = new Impulse(Direction.Horizontal, Sense.Left, 55, 5);
+        let leftImpulse = new Impulse(Direction.Horizontal, Sense.Left, 55, 7);
         this.#move(leftImpulse);
     }
 
     moveRight() {
-        let rightImpulse = new Impulse(Direction.Horizontal, Sense.Right, 55, 5);
+        let rightImpulse = new Impulse(Direction.Horizontal, Sense.Right, 55, 7);
         this.#move(rightImpulse);
     }
 
-    clearAnimation() {
+    stop() {
         this.animation.clearAnimationFrame();
+        this.#physicalObject.finalVelocityX = 0;
     }
 
-    syncAnimation() {
-        let obj = {
-            width: this.width,
-            height: this.height,
-            color: this.color,
-            physicalObject: this.#physicalObject
+    update(_this) {
+        let x = _this.#physicalObject.currentPosition.X;
+        let y = _this.#physicalObject.currentPosition.Y;
+        let finalVelocityX = _this.#physicalObject.finalVelocityX;
+
+        let boundaries = grandstand.getBoundaries(x, y, _this.width, _this.height, finalVelocityX, null);
+
+        if(boundaries.axisX) {
+            _this.#physicalObject.currentPosition.X -= finalVelocityX * 2.0;
+        } else {
+            _this.#physicalObject.currentPosition.X += finalVelocityX;
         }
-        this.animation.refresh(obj);
+
+        _this.draw(_this.#physicalObject.currentPosition.X, _this.#physicalObject.currentPosition.Y);
     }
 
     constructor(racket) {
         super(racket.rectangle);
         this.#physicalObject = new PhysicalObject(racket.position, racket.weight);
-        this.animation = RecAnimation();
-        this.syncAnimation();
-        this.animation.drawRect();
+        this.animation = MyAnimation(() => this.update(this));
+        this.draw(this.#physicalObject.currentPosition.X, this.#physicalObject.currentPosition.Y);
     }
 }
 
 class Grandstand extends HTMLCanvasElement {
+
+    getBoundaries(x, y, width, height, velocityX, velocityY) {
+        let axisX = false;
+
+        if(x + velocityX < 0 || x + velocityX > grandstand.width - width) {
+            axisX = true;
+        } else {
+            axisX = false;
+        }
+
+        return {
+            axisX
+        }
+    }
+
     constructor() {
         super();
         this.context = this.getContext("2d");
@@ -250,6 +270,7 @@ window.onload = () => {
     window.customElements.define('pingpong-table', Grandstand, { extends: "canvas"});
 
     globalThis.grandstand = document.querySelector("canvas[is='pingpong-table']");
+    grandstand.focus();
 
     let ingredients = Object.create(ingredientProto);
 
@@ -270,12 +291,6 @@ window.onload = () => {
             case AllowedKeys.ARROW_RIGHT:
                 racket.moveRight();
                 break;
-            case AllowedKeys.ARROW_UP:
-                console.log(Sense.Up);
-                break;
-            case AllowedKeys.ARROW_DOWN:
-                console.log(Sense.Down);
-                break;
             default:
                 return;
         }
@@ -283,7 +298,7 @@ window.onload = () => {
 
     grandstand.onkeyup = (event) => {
         if(event.code == AllowedKeys.ARROW_LEFT || event.code == AllowedKeys.ARROW_RIGHT) {
-            racket.clearAnimation();
+            racket.stop();
         }
     }
 };
