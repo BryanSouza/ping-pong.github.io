@@ -9,7 +9,5 @@ canvas {
     left: 50%;
     background: #000; 
     display: block;
-    height: 700;
-    width: 600;
     transform: translate(-50%, -50%);
 }

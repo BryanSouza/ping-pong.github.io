@@ -10,6 +10,11 @@ const Sense = {
     Right:  'RIGHT'
 }
 
+const Cast = {
+    Ball: 'Circle',
+    Racket: 'Rectangle'
+}
+
 class Vector {
     #direction = Direction.Horizontal;
     #sense = Sense.Up;
@@ -102,6 +107,11 @@ class PhysicalObject {
 
     }
 
+    setVelocity(x, y) {
+        this.finalVelocityX = x;
+        this.finalVelocityY = y;
+    }
+
     constructor(position, weight) {
         this.currentPosition = Object.assign(position);
         this.weight = weight;
@@ -110,26 +120,33 @@ class PhysicalObject {
 }
 
 function MyAnimation(update) {
-    let startTime = null;
-    let animationLength = 500;
-    let raf;
+    let raf = null;
+    let fpsInterval, startTime, now, then, elapsed;
 
-    function animate(timestamp) {
-        let progress = 0;
+    function animate() {
 
-        if(startTime === null) {
-            startTime = timestamp;
+        now = Date.now();
+
+        if(then === undefined) {
+            elapsed = now - startTime;
         } else {
-            progress = timestamp - startTime;
+            // calculate elapsed time using a new starting point
+            elapsed = now - then; 
         }
 
-        if(progress < animationLength) {
+        if(elapsed > fpsInterval) {
+            // set a new starting point at this precise moment
+            then = now - (elapsed % fpsInterval);
             update();
-            raf = window.requestAnimationFrame(animate);
         }
+
+        raf = window.requestAnimationFrame(animate);
     }
 
-    function Init(){
+    function Init(fps){
+        fpsInterval = 1000 / fps;
+        startTime = Date.now();
+
         raf = window.requestAnimationFrame(animate);
     }
 
@@ -137,14 +154,83 @@ function MyAnimation(update) {
         if(raf) {
             window.cancelAnimationFrame(raf);
             raf = null;
-            startTime = null;
         }
     }
 
     return {
         Init,
-        clearAnimationFrame
+        clearAnimationFrame,
     }
+}
+
+class Circle {
+
+    validify() {
+        if(this.radius < 0) {
+            throw Error("The radius should be greater than 0.");
+        }
+    }
+    
+    draw(x, y) {
+        stage.context.beginPath();
+        stage.context.arc(x, y, this.radius, this.startAngle, this.endAngle);
+        stage.context.fillStyle = this.color;
+        stage.context.fill();
+        stage.context.strokeStyle = "#453dd9";
+        stage.context.stroke();
+        stage.context.closePath();
+    }
+
+    constructor(circle) {
+        this.radius = circle.radius;
+        this.color = circle.color;
+        this.startAngle = 0;
+        this.endAngle = Math.PI * 2; // 360 degrees in radians
+        this.validify();
+    }
+
+}
+
+class Ball extends Circle {
+    #physicalObject;
+
+    update() {
+        let x = this.#physicalObject.currentPosition.X;
+        let y = this.#physicalObject.currentPosition.Y;
+        let finalVelocityX = this.#physicalObject.finalVelocityX;
+        let finalVelocityY = this.#physicalObject.finalVelocityY;
+        
+        let boundaries = stage.getBoundaries(x, y, null, null, finalVelocityX, finalVelocityY, this.radius, Cast.Ball);
+
+        if(boundaries.axisX) {
+            this.#physicalObject.finalVelocityX = finalVelocityX * -1;
+        }
+
+        if(boundaries.axisY) {
+            this.#physicalObject.finalVelocityY = finalVelocityY * -1;
+        }
+
+        this.#physicalObject.currentPosition.X += finalVelocityX;
+        this.#physicalObject.currentPosition.Y += finalVelocityY;
+        
+        this.draw(this.#physicalObject.currentPosition.X, this.#physicalObject.currentPosition.Y);
+    }
+
+    enter() {
+        this.draw(this.#physicalObject.currentPosition.X, this.#physicalObject.currentPosition.Y);
+    }
+
+    exit() {
+        this.#physicalObject.finalVelocityX = 0;
+        this.#physicalObject.finalVelocityY = 0;
+    }
+
+    constructor(ball) {
+        super(ball.circle);
+        this.#physicalObject = new PhysicalObject(ball.position, ball.weight);
+        this.#physicalObject.setVelocity(3.5, 7.5);
+    }
+
 }
 
 class Rectangle {
@@ -159,7 +245,6 @@ class Rectangle {
     }
 
     draw(x, y) {
-        stage.context.clearRect(0, 0, stage.width, stage.height);
         stage.context.beginPath();
         stage.context.rect(x, y, this.width, this.height);
         stage.context.fillStyle = this.color;
@@ -180,16 +265,15 @@ class Racket extends Rectangle {
 
     #move(impulse) {
         this.#physicalObject.move(impulse);
-        this.animation.Init();
     }
 
     moveLeft() {
-        let leftImpulse = new Impulse(Direction.Horizontal, Sense.Left, 55, 7);
+        let leftImpulse = new Impulse(Direction.Horizontal, Sense.Left, 65, 7);
         this.#move(leftImpulse);
     }
 
     moveRight() {
-        let rightImpulse = new Impulse(Direction.Horizontal, Sense.Right, 55, 7);
+        let rightImpulse = new Impulse(Direction.Horizontal, Sense.Right, 65, 7);
         this.#move(rightImpulse);
     }
 
@@ -198,58 +282,114 @@ class Racket extends Rectangle {
         this.#physicalObject.finalVelocityX = 0;
     }
 
-    update(_this) {
-        let x = _this.#physicalObject.currentPosition.X;
-        let y = _this.#physicalObject.currentPosition.Y;
-        let finalVelocityX = _this.#physicalObject.finalVelocityX;
+    update() {
+        let x = this.#physicalObject.currentPosition.X;
+        let y = this.#physicalObject.currentPosition.Y;
+        let finalVelocityX = this.#physicalObject.finalVelocityX;
 
-        let boundaries = stage.getBoundaries(x, y, _this.width, _this.height, finalVelocityX, null);
+        let boundaries = stage.getBoundaries(x, y, this.width, this.height, finalVelocityX, null, null, Cast.Racket);
 
         if(boundaries.axisX) {
-            _this.#physicalObject.currentPosition.X -= finalVelocityX * 2.0;
+            this.#physicalObject.currentPosition.X -= finalVelocityX * 2.0;
         } else {
-            _this.#physicalObject.currentPosition.X += finalVelocityX;
+            this.#physicalObject.currentPosition.X += finalVelocityX;
         }
 
-        _this.draw(_this.#physicalObject.currentPosition.X, _this.#physicalObject.currentPosition.Y);
+        this.draw(this.#physicalObject.currentPosition.X, this.#physicalObject.currentPosition.Y);
+    }
+
+    enter() {
+        this.draw(this.#physicalObject.currentPosition.X, this.#physicalObject.currentPosition.Y);
+    }
+
+    exit() {
+        this.#physicalObject.finalVelocityX = 0;
+        this.#physicalObject.finalVelocityY = 0;
     }
 
     constructor(racket) {
         super(racket.rectangle);
         this.#physicalObject = new PhysicalObject(racket.position, racket.weight);
-        this.animation = MyAnimation(() => this.update(this));
-        this.draw(this.#physicalObject.currentPosition.X, this.#physicalObject.currentPosition.Y);
     }
 }
 
 class Stage extends HTMLCanvasElement {
 
-    getBoundaries(x, y, width, height, velocityX, velocityY) {
+    getBoundaries(x, y, width, height, velocityX, velocityY, radius, actor) {
         let axisX = false;
+        let axisY = false;
 
-        if(x + velocityX < 0 || x + velocityX > stage.width - width) {
-            axisX = true;
-        } else {
-            axisX = false;
+        if(actor == Cast.Racket) {
+            if(x + velocityX < 0 || x + velocityX > stage.width - width) {
+                axisX = true;
+            }
+
+            if(y + velocityY < 0 || y + velocityY > stage.width - height) {
+                axisY = true;
+            }
+        } else if (actor = Cast.Ball) {
+            // The center of the circle corresponds to the position X and Y.
+            if(x + velocityX < radius || x + velocityX > stage.width - radius) {
+                axisX = true;
+            }
+
+            if(y + velocityY < radius || y + velocityY > stage.height - radius) {
+                axisY = true;
+            }
         }
 
         return {
-            axisX
+            axisX,
+            axisY
         }
+    }
+
+    openTheCurtains() {
+        this.context.clearRect(0, 0, stage.width, stage.height);
+    }
+
+    callCast(racket, ball) {
+        this.racket = racket;
+        this.ball = ball;
+
+        this.racket.enter();
+        this.ball.enter();
+        this.animation.Init(100); // 100 frames per second
+    }
+
+    start(_this) {
+        _this.openTheCurtains();
+        _this.racket.update();
+        _this.ball.update();
+    }
+
+    stop() {
+        this.racket.exit();
+        this.ball.exit();
+        this.animation.clearAnimationFrame();
     }
 
     constructor() {
         super();
         this.context = this.getContext("2d");
+        this.animation = MyAnimation(() => this.start(this));
     }
 }
 
-const ingredientProto = {
+const RacketModel = {
     position: {X: null, Y: null},
     rectangle: {
         height: null,
         width: null,
         color: null
+    }
+};
+
+const BallModel = {
+    position: {X: null, Y: null},
+    circle: {
+        radius: null,
+        color: null,
     }
 };
 
@@ -267,16 +407,28 @@ window.onload = () => {
     globalThis.stage = document.querySelector("canvas[is='pingpong-table']");
     stage.focus();
 
-    let ingredients = Object.create(ingredientProto);
+    let racketProprieties = Object.create(RacketModel);
 
-    ingredients.position.X        = 125;
-    ingredients.position.Y        = 135;
-    ingredients.weight            = 25;
-    ingredients.rectangle.height  = 2;
-    ingredients.rectangle.width   = 50;
-    ingredients.rectangle.color   = "#FF0000";
+    racketProprieties.position.X        = stage.width/2 - 50;
+    racketProprieties.position.Y        = 650;
+    racketProprieties.weight            = 25;
+    racketProprieties.rectangle.height  = 10;
+    racketProprieties.rectangle.width   = 100;
+    racketProprieties.rectangle.color   = "#FF0000";
 
-    let racket = new Racket(ingredients);
+    let racket = new Racket(racketProprieties);
+
+    let ballProprieties = Object.create(BallModel);
+
+    ballProprieties.position.X      = stage.width/2;
+    ballProprieties.position.Y      = stage.height/2;
+    ballProprieties.weight          = 10;
+    ballProprieties.circle.radius   = 10;
+    ballProprieties.circle.color    = "#342EAD";
+
+    let ball = new Ball(ballProprieties);
+
+    stage.callCast(racket, ball);
 
     stage.onkeydown = (event) => {
         switch(event.code) {
@@ -292,8 +444,8 @@ window.onload = () => {
     }
 
     stage.onkeyup = (event) => {
-        if(event.code == AllowedKeys.ARROW_LEFT || event.code == AllowedKeys.ARROW_RIGHT) {
-            racket.stop();
+        if(event.code == "Space") {
+            stage.stop();
         }
     }
 
