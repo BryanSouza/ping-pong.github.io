@@ -129,10 +129,6 @@ function MyAnimation(update) {
         }
     }
 
-    function refresh(newObj) {
-        objectToAnimate = newObj;
-    }
-
     function Init(){
         raf = window.requestAnimationFrame(animate);
     }
@@ -147,8 +143,7 @@ function MyAnimation(update) {
 
     return {
         Init,
-        clearAnimationFrame,
-        refresh
+        clearAnimationFrame
     }
 }
 
@@ -164,12 +159,12 @@ class Rectangle {
     }
 
     draw(x, y) {
-        grandstand.context.clearRect(0, 0, grandstand.width, grandstand.height);
-        grandstand.context.beginPath();
-        grandstand.context.rect(x, y, this.width, this.height);
-        grandstand.context.fillStyle = this.color;
-        grandstand.context.fill();
-        grandstand.context.closePath();
+        stage.context.clearRect(0, 0, stage.width, stage.height);
+        stage.context.beginPath();
+        stage.context.rect(x, y, this.width, this.height);
+        stage.context.fillStyle = this.color;
+        stage.context.fill();
+        stage.context.closePath();
     }
 
     constructor(rectangle) {
@@ -208,7 +203,7 @@ class Racket extends Rectangle {
         let y = _this.#physicalObject.currentPosition.Y;
         let finalVelocityX = _this.#physicalObject.finalVelocityX;
 
-        let boundaries = grandstand.getBoundaries(x, y, _this.width, _this.height, finalVelocityX, null);
+        let boundaries = stage.getBoundaries(x, y, _this.width, _this.height, finalVelocityX, null);
 
         if(boundaries.axisX) {
             _this.#physicalObject.currentPosition.X -= finalVelocityX * 2.0;
@@ -227,12 +222,12 @@ class Racket extends Rectangle {
     }
 }
 
-class Grandstand extends HTMLCanvasElement {
+class Stage extends HTMLCanvasElement {
 
     getBoundaries(x, y, width, height, velocityX, velocityY) {
         let axisX = false;
 
-        if(x + velocityX < 0 || x + velocityX > grandstand.width - width) {
+        if(x + velocityX < 0 || x + velocityX > stage.width - width) {
             axisX = true;
         } else {
             axisX = false;
@@ -266,11 +261,11 @@ const AllowedKeys = {
 }
 
 window.onload = () => {
-    // Initiating Canvas
-    window.customElements.define('pingpong-table', Grandstand, { extends: "canvas"});
 
-    globalThis.grandstand = document.querySelector("canvas[is='pingpong-table']");
-    grandstand.focus();
+    window.customElements.define('pingpong-table', Stage, { extends: "canvas"});
+
+    globalThis.stage = document.querySelector("canvas[is='pingpong-table']");
+    stage.focus();
 
     let ingredients = Object.create(ingredientProto);
 
@@ -283,7 +278,7 @@ window.onload = () => {
 
     let racket = new Racket(ingredients);
 
-    grandstand.onkeydown = (event) => {
+    stage.onkeydown = (event) => {
         switch(event.code) {
             case AllowedKeys.ARROW_LEFT:
                 racket.moveLeft();
@@ -296,9 +291,10 @@ window.onload = () => {
         }
     }
 
-    grandstand.onkeyup = (event) => {
+    stage.onkeyup = (event) => {
         if(event.code == AllowedKeys.ARROW_LEFT || event.code == AllowedKeys.ARROW_RIGHT) {
             racket.stop();
         }
     }
+
 };
