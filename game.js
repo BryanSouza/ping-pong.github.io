@@ -319,7 +319,7 @@ class Stage extends HTMLCanvasElement {
         let axisX = false;
         let axisY = false;
 
-        if(actor == Cast.Racket) {
+        if(actor === Cast.Racket) {
             if(x + velocityX < 0 || x + velocityX > stage.width - width) {
                 axisX = true;
             }
@@ -327,7 +327,7 @@ class Stage extends HTMLCanvasElement {
             if(y + velocityY < 0 || y + velocityY > stage.width - height) {
                 axisY = true;
             }
-        } else if (actor = Cast.Ball) {
+        } else if (actor === Cast.Ball) {
             // The center of the circle corresponds to the position X and Y.
             if(x + velocityX < radius || x + velocityX > stage.width - radius) {
                 axisX = true;
