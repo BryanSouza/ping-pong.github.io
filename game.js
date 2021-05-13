@@ -79,7 +79,7 @@ class PhysicalObject {
 
     move(impulse) {
         let normalForce = this.weight * this.#gravity;
-
+        this.lastImpulse = impulse;
         switch(impulse.getDirection()) {
             case Direction.Horizontal:
                 let friction = normalForce * this.#frictions_coefficient;
@@ -95,13 +95,9 @@ class PhysicalObject {
                 }
                 break;
             default:
-                switch(impulse.getSense()) {
-                    case Sense.Up:
-                        console.log("up");
-                        break;
-                    default:
-                        console.log("down");
-                        break;
+                let velocityY = (impulse.getMagnitude() * impulse.time) / this.weight;
+                if(impulse.getSense() == Sense.Up) {
+                    this.finalVelocityY = velocityY * -1;
                 }
         }
 
@@ -203,17 +199,26 @@ class Ball extends Circle {
         let boundaries = stage.getBoundaries(x, y, null, null, finalVelocityX, finalVelocityY, this.radius, Cast.Ball);
 
         if(boundaries.axisX) {
-            this.#physicalObject.finalVelocityX = finalVelocityX * -1;
+            this.#physicalObject.finalVelocityX *= -1;
+            this.#physicalObject.finalVelocityY *= 0.75;
         }
 
         if(boundaries.axisY) {
-            this.#physicalObject.finalVelocityY = finalVelocityY * -1;
+            this.#physicalObject.finalVelocityY *= -1;
         }
 
         this.#physicalObject.currentPosition.X += finalVelocityX;
         this.#physicalObject.currentPosition.Y += finalVelocityY;
         
         this.draw(this.#physicalObject.currentPosition.X, this.#physicalObject.currentPosition.Y);
+    }
+
+    moveUp(impulse) {
+        this.#physicalObject.move(impulse);
+    }
+
+    moveDown(impulse) {
+        this.#physicalObject.move(impulse);
     }
 
     enter() {
@@ -225,10 +230,14 @@ class Ball extends Circle {
         this.#physicalObject.finalVelocityY = 0;
     }
 
+    getPosition() {
+        return this.#physicalObject.currentPosition;
+    }
+
     constructor(ball) {
         super(ball.circle);
         this.#physicalObject = new PhysicalObject(ball.position, ball.weight);
-        this.#physicalObject.setVelocity(3.5, 7.5);
+        this.#physicalObject.setVelocity(3.5, 5.5);
     }
 
 }
@@ -307,6 +316,10 @@ class Racket extends Rectangle {
         this.#physicalObject.finalVelocityY = 0;
     }
 
+    getPosition() {
+        return this.#physicalObject.currentPosition;
+    }
+
     constructor(racket) {
         super(racket.rectangle);
         this.#physicalObject = new PhysicalObject(racket.position, racket.weight);
@@ -357,9 +370,44 @@ class Stage extends HTMLCanvasElement {
         this.animation.Init(100); // 100 frames per second
     }
 
+    detectCollision(racket) {
+        let ballHasCollided = false;
+
+        let rec = {
+            height: racket.height,
+            width: racket.width,
+            position: racket.getPosition()
+        };
+
+        let circle = {
+            radius: this.ball.radius,
+            position: this.ball.getPosition()
+        };
+
+        // a bug ocurrs when the ball hits the sides of the racket!!
+
+        if(circle.position.Y + circle.radius >= rec.position.Y &&
+            circle.position.Y - circle.radius < rec.position.Y + rec.height) {
+            if(circle.position.X + circle.radius >= rec.position.X &&
+                circle.position.X - circle.radius <= rec.position.X + rec.width) {
+                ballHasCollided = true;
+            }
+        }
+
+        return ballHasCollided;
+    }
+
     start(_this) {
         _this.openTheCurtains();
         _this.racket.update();
+
+        let hasPlayerRacketCollided = _this.detectCollision(_this.racket);
+
+        if(hasPlayerRacketCollided) {
+            let impulse = new Impulse(Direction.Vertical, Sense.Up, 60, 2);
+            _this.ball.moveUp(impulse);
+        }
+
         _this.ball.update();
     }
 
