@@ -98,9 +98,11 @@ class PhysicalObject {
                 let velocityY = (impulse.getMagnitude() * impulse.time) / this.weight;
                 if(impulse.getSense() == Sense.Up) {
                     this.finalVelocityY = velocityY * -1;
+                } else {
+                    this.finalVelocityY = velocityY;
                 }
         }
-
+        this.impulseStack.push(this.lastImpulse);
     }
 
     setVelocity(x, y) {
@@ -112,6 +114,9 @@ class PhysicalObject {
         this.currentPosition = Object.assign(position);
         this.weight = weight;
         this.finalVelocityX = 0;
+        this.finalVelocityY = 0;
+        this.lastImpulse = null;
+        this.impulseStack = [];
     }
 }
 
@@ -135,7 +140,7 @@ function MyAnimation(update) {
             then = now - (elapsed % fpsInterval);
             update();
         }
-
+        
         raf = window.requestAnimationFrame(animate);
     }
 
@@ -198,13 +203,8 @@ class Ball extends Circle {
         
         let boundaries = stage.getBoundaries(x, y, null, null, finalVelocityX, finalVelocityY, this.radius, Cast.Ball);
 
-        if(boundaries.axisX) {
-            this.#physicalObject.finalVelocityX *= -1;
-            this.#physicalObject.finalVelocityY *= 0.75;
-        }
-
-        if(boundaries.axisY) {
-            this.#physicalObject.finalVelocityY *= -1;
+        if(boundaries.axisX || boundaries.axisY) {
+            this.reset();
         }
 
         this.#physicalObject.currentPosition.X += finalVelocityX;
@@ -213,21 +213,59 @@ class Ball extends Circle {
         this.draw(this.#physicalObject.currentPosition.X, this.#physicalObject.currentPosition.Y);
     }
 
-    moveUp(impulse) {
+    moveUp(impulse, racketImpulse) {
+        this.#physicalObject.impulseStack = [];
         this.#physicalObject.move(impulse);
+        if(racketImpulse) {
+            let sense = racketImpulse.getSense();
+            let newImpulse = new Impulse(Direction.Horizontal, sense, 40, 1);
+            this.#physicalObject.move(newImpulse);
+        }
     }
 
-    moveDown(impulse) {
+    moveDown(impulse, racketImpulse) {
+        this.#physicalObject.impulseStack = [];
         this.#physicalObject.move(impulse);
+        if(racketImpulse) {
+            let sense = racketImpulse.getSense();
+            let newImpulse = new Impulse(Direction.Horizontal, sense, 40, 1);
+            this.#physicalObject.move(newImpulse);
+        }
     }
 
     enter() {
         this.draw(this.#physicalObject.currentPosition.X, this.#physicalObject.currentPosition.Y);
     }
 
-    exit() {
+    reset() {
         this.#physicalObject.finalVelocityX = 0;
         this.#physicalObject.finalVelocityY = 0;
+        this.#physicalObject.currentPosition.X = stage.width / 2;
+        if(this.#physicalObject.impulseStack.length >= 1) {
+            let lastImpulse = this.#physicalObject.lastImpulse;
+            let lastImpulseDirection = lastImpulse.getDirection();
+            if(lastImpulseDirection !== Direction.Vertical) {
+                let verticalImpulses = this.#physicalObject.impulseStack.filter((i) => i.getDirection() === Direction.Vertical);
+                let lastVerticalImpulse = verticalImpulses[verticalImpulses.length - 1];
+                let sense = lastVerticalImpulse.getSense();
+                this.#respawn(sense);
+
+            } else {
+                let sense = lastImpulse.getSense();
+                this.#respawn(sense);
+            }
+        }
+        globalThis.isRunning = false;
+    }
+
+    #respawn(sense) {
+        if(sense !== Sense.Up) {
+            globalThis.PlayerOne++;
+            this.#physicalObject.currentPosition.Y = 100;
+        } else {
+            globalThis.PlayerTwo++;
+            this.#physicalObject.currentPosition.Y = 650 - ( this.radius + 10);
+        }
     }
 
     getPosition() {
@@ -237,7 +275,6 @@ class Ball extends Circle {
     constructor(ball) {
         super(ball.circle);
         this.#physicalObject = new PhysicalObject(ball.position, ball.weight);
-        this.#physicalObject.setVelocity(3.5, 5.5);
     }
 
 }
@@ -286,11 +323,6 @@ class Racket extends Rectangle {
         this.#move(rightImpulse);
     }
 
-    stop() {
-        this.animation.clearAnimationFrame();
-        this.#physicalObject.finalVelocityX = 0;
-    }
-
     update() {
         let x = this.#physicalObject.currentPosition.X;
         let y = this.#physicalObject.currentPosition.Y;
@@ -311,13 +343,20 @@ class Racket extends Rectangle {
         this.draw(this.#physicalObject.currentPosition.X, this.#physicalObject.currentPosition.Y);
     }
 
-    exit() {
-        this.#physicalObject.finalVelocityX = 0;
-        this.#physicalObject.finalVelocityY = 0;
+    getLastImpulse() {
+        return this.#physicalObject.lastImpulse;
     }
 
     getPosition() {
         return this.#physicalObject.currentPosition;
+    }
+
+    getVelocityX() {
+        return this.#physicalObject.finalVelocityX;
+    }
+
+    getVelocityY() {
+        return this.#physicalObject.finalVelocityY;
     }
 
     constructor(racket) {
@@ -361,16 +400,18 @@ class Stage extends HTMLCanvasElement {
         this.context.clearRect(0, 0, stage.width, stage.height);
     }
 
-    callCast(racket, ball) {
-        this.racket = racket;
+    callActors(racketOne, racketTwo, ball) {
+        this.racketOne = racketOne;
+        this.racketTwo = racketTwo;
         this.ball = ball;
 
-        this.racket.enter();
+        this.racketOne.enter();
+        this.racketTwo.enter();
         this.ball.enter();
         this.animation.Init(100); // 100 frames per second
     }
 
-    detectCollision(racket) {
+    detectCollision(racket, isPlayerOne=false) {
         let ballHasCollided = false;
 
         let rec = {
@@ -384,37 +425,49 @@ class Stage extends HTMLCanvasElement {
             position: this.ball.getPosition()
         };
 
-        // a bug ocurrs when the ball hits the sides of the racket!!
-
-        if(circle.position.Y + circle.radius >= rec.position.Y &&
-            circle.position.Y - circle.radius < rec.position.Y + rec.height) {
-            if(circle.position.X + circle.radius >= rec.position.X &&
-                circle.position.X - circle.radius <= rec.position.X + rec.width) {
-                ballHasCollided = true;
+        if(isPlayerOne) {
+            if(circle.position.Y + circle.radius >= rec.position.Y &&
+                circle.position.Y - circle.radius < rec.position.Y + rec.height) {
+                if(circle.position.X + circle.radius >= rec.position.X &&
+                    circle.position.X - circle.radius <= rec.position.X + rec.width) {
+                    ballHasCollided = true;
+                }
+            }
+        } else {
+            if(circle.position.Y - circle.radius <= rec.position.Y + rec.height &&
+                circle.position.Y + circle.radius > rec.position.Y) {
+                if(circle.position.X + circle.radius >= rec.position.X &&
+                    circle.position.X - circle.radius <= rec.position.X + rec.width) {
+                    ballHasCollided = true;
+                }
             }
         }
-
+        
         return ballHasCollided;
     }
 
     start(_this) {
         _this.openTheCurtains();
-        _this.racket.update();
+        _this.racketOne.update();
+        _this.racketTwo.update();
 
-        let hasPlayerRacketCollided = _this.detectCollision(_this.racket);
+        let hasRacketOneCollided = _this.detectCollision(_this.racketOne, true);
 
-        if(hasPlayerRacketCollided) {
+        if(hasRacketOneCollided) {
             let impulse = new Impulse(Direction.Vertical, Sense.Up, 60, 2);
-            _this.ball.moveUp(impulse);
+            let racketImpulse = _this.racketOne.getLastImpulse();
+            _this.ball.moveUp(impulse, racketImpulse);
+        }
+
+        let hasRacketTwoCollided = _this.detectCollision(_this.racketTwo);
+
+        if(hasRacketTwoCollided) {
+            let impulse = new Impulse(Direction.Vertical, Sense.Down, 60, 2);
+            let racketImpulse = _this.racketTwo.getLastImpulse();
+            _this.ball.moveDown(impulse, racketImpulse);
         }
 
         _this.ball.update();
-    }
-
-    stop() {
-        this.racket.exit();
-        this.ball.exit();
-        this.animation.clearAnimationFrame();
     }
 
     constructor() {
@@ -423,15 +476,6 @@ class Stage extends HTMLCanvasElement {
         this.animation = MyAnimation(() => this.start(this));
     }
 }
-
-const RacketModel = {
-    position: {X: null, Y: null},
-    rectangle: {
-        height: null,
-        width: null,
-        color: null
-    }
-};
 
 const BallModel = {
     position: {X: null, Y: null},
@@ -445,7 +489,9 @@ const AllowedKeys = {
     ARROW_LEFT:   'ArrowLeft',
     ARROW_RIGHT:  'ArrowRight',
     ARROW_UP:     'ArrowUp',
-    ARROW_DOWN:   'ArrowDown'
+    ARROW_DOWN:   'ArrowDown',
+    KEY_D: 'KeyD',
+    KEY_A: 'KeyA',
 }
 
 window.onload = () => {
@@ -455,36 +501,67 @@ window.onload = () => {
     globalThis.stage = document.querySelector("canvas[is='pingpong-table']");
     stage.focus();
 
-    let racketProprieties = Object.create(RacketModel);
+    let racketOneProprieties = {
+        weight: 25,
+        rectangle: {
+            height: 10,
+            width: 100,
+            color: "#FF0000"
+        },
+        position: {
+            X: stage.width/2 - 50,
+            Y: 650
+        }
+    };
 
-    racketProprieties.position.X        = stage.width/2 - 50;
-    racketProprieties.position.Y        = 650;
-    racketProprieties.weight            = 25;
-    racketProprieties.rectangle.height  = 10;
-    racketProprieties.rectangle.width   = 100;
-    racketProprieties.rectangle.color   = "#FF0000";
+    let racketOne = new Racket(racketOneProprieties);
 
-    let racket = new Racket(racketProprieties);
+    let racketTwoProprieties = {
+        weight: 25,
+        rectangle: {
+            height: 10,
+            width: 100,
+            color: "#FF0000",
+        },
+        position: {
+            X: stage.width/2 - 50,
+            Y: 50
+        }
+    };
 
-    let ballProprieties = Object.create(BallModel);
+    let racketTwo = new Racket(racketTwoProprieties);
 
-    ballProprieties.position.X      = stage.width/2;
-    ballProprieties.position.Y      = stage.height/2;
-    ballProprieties.weight          = 10;
-    ballProprieties.circle.radius   = 10;
-    ballProprieties.circle.color    = "#342EAD";
+    let ballProprieties = {
+        weight: 10,
+        position: {X: stage.width/2, Y: 630},
+        circle: {
+            radius: 10,
+            color: "#342EAD",
+        }
+    };
 
     let ball = new Ball(ballProprieties);
 
-    stage.callCast(racket, ball);
+    stage.callActors(racketOne, racketTwo, ball);
+    globalThis.isRunning = false;
+
+    // Initial Score
+    globalThis.PlayerOne = 0;
+    globalThis.PlayerTwo = 0;
 
     stage.onkeydown = (event) => {
         switch(event.code) {
             case AllowedKeys.ARROW_LEFT:
-                racket.moveLeft();
+                racketOne.moveLeft();
                 break;
             case AllowedKeys.ARROW_RIGHT:
-                racket.moveRight();
+                racketOne.moveRight();
+                break;
+            case AllowedKeys.KEY_A:
+                racketTwo.moveLeft();
+                break;
+            case AllowedKeys.KEY_D:
+                racketTwo.moveRight();
                 break;
             default:
                 return;
@@ -493,7 +570,17 @@ window.onload = () => {
 
     stage.onkeyup = (event) => {
         if(event.code == "Space") {
-            stage.stop();
+            // push ball
+            if(!globalThis.isRunning) {
+                let racketLastPosition = racketOne.getPosition();
+                if(ballProprieties.position.X + ballProprieties.circle.radius >= racketLastPosition.X &&
+                    ballProprieties.position.X - ballProprieties.circle.radius <= racketLastPosition.X + racketOneProprieties.rectangle.width) {
+                    let impulse = new Impulse(Direction.Vertical, Sense.Up, 60, 2);
+                    let racketImpulse = racketOne.getLastImpulse();
+                    ball.moveUp(impulse, racketImpulse);
+                    globalThis.isRunning = true;
+                }
+            }
         }
     }
 
