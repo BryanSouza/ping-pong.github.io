@@ -144,7 +144,7 @@ function MyAnimation(update) {
         raf = window.requestAnimationFrame(animate);
     }
 
-    function Init(fps){
+    function Init(fps) {
         fpsInterval = 1000 / fps;
         startTime = Date.now();
 
@@ -204,7 +204,7 @@ class Ball extends Circle {
         let boundaries = stage.getBoundaries(x, y, null, null, finalVelocityX, finalVelocityY, this.radius, Cast.Ball);
 
         if(boundaries.axisX || boundaries.axisY) {
-            this.reset();
+            this.reset(boundaries.axisX);
         }
 
         this.#physicalObject.currentPosition.X += finalVelocityX;
@@ -218,7 +218,7 @@ class Ball extends Circle {
         this.#physicalObject.move(impulse);
         if(racketImpulse) {
             let sense = racketImpulse.getSense();
-            let newImpulse = new Impulse(Direction.Horizontal, sense, 40, 1);
+            let newImpulse = new Impulse(Direction.Horizontal, sense, 45, 1);
             this.#physicalObject.move(newImpulse);
         }
     }
@@ -228,7 +228,7 @@ class Ball extends Circle {
         this.#physicalObject.move(impulse);
         if(racketImpulse) {
             let sense = racketImpulse.getSense();
-            let newImpulse = new Impulse(Direction.Horizontal, sense, 40, 1);
+            let newImpulse = new Impulse(Direction.Horizontal, sense, 45, 1);
             this.#physicalObject.move(newImpulse);
         }
     }
@@ -237,7 +237,7 @@ class Ball extends Circle {
         this.draw(this.#physicalObject.currentPosition.X, this.#physicalObject.currentPosition.Y);
     }
 
-    reset() {
+    reset(axisX) {
         this.#physicalObject.finalVelocityX = 0;
         this.#physicalObject.finalVelocityY = 0;
         this.#physicalObject.currentPosition.X = stage.width / 2;
@@ -248,8 +248,12 @@ class Ball extends Circle {
                 let verticalImpulses = this.#physicalObject.impulseStack.filter((i) => i.getDirection() === Direction.Vertical);
                 let lastVerticalImpulse = verticalImpulses[verticalImpulses.length - 1];
                 let sense = lastVerticalImpulse.getSense();
-                this.#respawn(sense);
-
+                if(axisX) {
+                    let newSense = sense == Sense.Up ? Sense.Down : Sense.Up;
+                    this.#respawn(newSense, 10);
+                } else {
+                    this.#respawn(sense, 40);
+                }
             } else {
                 let sense = lastImpulse.getSense();
                 this.#respawn(sense);
@@ -258,13 +262,13 @@ class Ball extends Circle {
         globalThis.isRunning = false;
     }
 
-    #respawn(sense) {
-        if(sense !== Sense.Up) {
+    #respawn(sense, difference = 0) {
+        if(sense === Sense.Down) {
             globalThis.PlayerOne++;
-            this.#physicalObject.currentPosition.Y = 100;
-        } else {
+            this.#physicalObject.currentPosition.Y = 100 - difference;
+        } else if (sense === Sense.Up) {
             globalThis.PlayerTwo++;
-            this.#physicalObject.currentPosition.Y = 650 - ( this.radius + 10);
+            this.#physicalObject.currentPosition.Y = 600 + difference;
         }
     }
 
@@ -489,9 +493,9 @@ const AllowedKeys = {
     ARROW_LEFT:   'ArrowLeft',
     ARROW_RIGHT:  'ArrowRight',
     ARROW_UP:     'ArrowUp',
-    ARROW_DOWN:   'ArrowDown',
-    KEY_D: 'KeyD',
     KEY_A: 'KeyA',
+    KEY_S: 'KeyS',
+    KEY_D: 'KeyD',
 }
 
 window.onload = () => {
@@ -525,7 +529,7 @@ window.onload = () => {
         },
         position: {
             X: stage.width/2 - 50,
-            Y: 50
+            Y: 40
         }
     };
 
@@ -569,15 +573,25 @@ window.onload = () => {
     }
 
     stage.onkeyup = (event) => {
-        if(event.code == "Space") {
-            // push ball
+        if(event.code == AllowedKeys.ARROW_UP) {
             if(!globalThis.isRunning) {
                 let racketLastPosition = racketOne.getPosition();
                 if(ballProprieties.position.X + ballProprieties.circle.radius >= racketLastPosition.X &&
                     ballProprieties.position.X - ballProprieties.circle.radius <= racketLastPosition.X + racketOneProprieties.rectangle.width) {
-                    let impulse = new Impulse(Direction.Vertical, Sense.Up, 60, 2);
+                    let impulse = new Impulse(Direction.Vertical, Sense.Up, 70, 2);
                     let racketImpulse = racketOne.getLastImpulse();
                     ball.moveUp(impulse, racketImpulse);
+                    globalThis.isRunning = true;
+                }
+            }
+        } else if (event.code ==  AllowedKeys.KEY_S) {
+            if(!globalThis.isRunning) {
+                let racketLastPosition = racketTwo.getPosition();
+                if(ballProprieties.position.X + ballProprieties.circle.radius >= racketLastPosition.X &&
+                    ballProprieties.position.X - ballProprieties.circle.radius <= racketLastPosition.X + racketOneProprieties.rectangle.width) {
+                    let impulse = new Impulse(Direction.Vertical, Sense.Down, 70, 2);
+                    let racketImpulse = racketTwo.getLastImpulse();
+                    ball.moveDown(impulse, racketImpulse);
                     globalThis.isRunning = true;
                 }
             }
