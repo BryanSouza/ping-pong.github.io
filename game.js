@@ -264,10 +264,10 @@ class Ball extends Circle {
 
     #respawn(sense, difference = 0) {
         if(sense === Sense.Down) {
-            globalThis.PlayerOne++;
+            globalThis.PlayerTwo++;
             this.#physicalObject.currentPosition.Y = 100 - difference;
         } else if (sense === Sense.Up) {
-            globalThis.PlayerTwo++;
+            globalThis.PlayerOne++;
             this.#physicalObject.currentPosition.Y = 600 + difference;
         }
     }
@@ -450,6 +450,17 @@ class Stage extends HTMLCanvasElement {
         return ballHasCollided;
     }
 
+    drawScores() {
+        //Player One
+        this.context.font = "16px Arial";
+        this.context.fillStyle = "#FFF";
+        this.context.fillText(`Player One: ${globalThis.PlayerOne}` , 10, 690);
+        //Player Two
+        this.context.font = "16px Arial";
+        this.context.fillStyle = "#FFF";
+        this.context.fillText(`Player Two: ${globalThis.PlayerTwo}` , 10, 20);
+    }
+
     start(_this) {
         _this.openTheCurtains();
         _this.racketOne.update();
@@ -472,6 +483,7 @@ class Stage extends HTMLCanvasElement {
         }
 
         _this.ball.update();
+        _this.drawScores();
     }
 
     constructor() {
@@ -574,7 +586,8 @@ window.onload = () => {
 
     stage.onkeyup = (event) => {
         if(event.code == AllowedKeys.ARROW_UP) {
-            if(!globalThis.isRunning) {
+            let ballPosition = ball.getPosition();
+            if(!globalThis.isRunning && ballPosition.Y > stage.width/2) {
                 let racketLastPosition = racketOne.getPosition();
                 if(ballProprieties.position.X + ballProprieties.circle.radius >= racketLastPosition.X &&
                     ballProprieties.position.X - ballProprieties.circle.radius <= racketLastPosition.X + racketOneProprieties.rectangle.width) {
@@ -585,7 +598,8 @@ window.onload = () => {
                 }
             }
         } else if (event.code ==  AllowedKeys.KEY_S) {
-            if(!globalThis.isRunning) {
+            let ballPosition = ball.getPosition();
+            if(!globalThis.isRunning && ballPosition.Y < stage.width/2) {
                 let racketLastPosition = racketTwo.getPosition();
                 if(ballProprieties.position.X + ballProprieties.circle.radius >= racketLastPosition.X &&
                     ballProprieties.position.X - ballProprieties.circle.radius <= racketLastPosition.X + racketOneProprieties.rectangle.width) {
